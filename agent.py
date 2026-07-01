@@ -70,7 +70,7 @@ async def main():
             print("🚀 Routing task to Hugging Face Serverless API (Frontend specialisation)...")
             hf_client = InferenceClient(api_key=huggingface_key)
             messages = [{"role": "user", "content": task_prompt}]
-            model_id = "NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO"
+            model_id = "mistralai/Mistral-7B-Instruct-v0.3"
             response = hf_client.chat.completions.create(model=model_id, messages=messages)
             output_text = response.choices[0].message.content
             
