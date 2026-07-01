@@ -2,3 +2,4 @@ google-antigravity
 supabase
 google-genai
 huggingface_hub
+groq
