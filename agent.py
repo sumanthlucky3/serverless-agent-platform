@@ -78,6 +78,9 @@ async def main():
             print(output_text)
             print("\n✨ -------------------- ✨\n")
             
+            with open("output.txt", "w", encoding="utf-8") as f:
+                f.write(output_text)
+            
             log_run(task_prompt, category, output_text, model_id, "success")
         else:
             print("🚀 Routing task to Antigravity SDK Sandbox...")
@@ -95,6 +98,9 @@ async def main():
             print("\n✨ --- AGENT OUTPUT --- ✨\n")
             print(output_text)
             print("\n✨ -------------------- ✨\n")
+            
+            with open("output.txt", "w", encoding="utf-8") as f:
+                f.write(output_text)
             
             # STEP 3: Write to Supabase
             log_run(task_prompt, category, output_text, "gemini/antigravity-preview-05-2026", "success")
