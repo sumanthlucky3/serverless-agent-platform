@@ -1,0 +1,35 @@
+name: 🫀 Supabase Keepalive Ping
+
+on:
+  schedule:
+    # Runs every 5 days at midnight UTC — well within the 7-day pause threshold
+    - cron: '0 0 */5 * *'
+  workflow_dispatch: # Allow manual trigger for testing
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    name: Ping Supabase to prevent auto-pause
+
+    steps:
+      - name: 🏓 Ping Supabase REST API
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          echo "🫀 Sending keepalive ping to Supabase..."
+          
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X GET \
+            "$SUPABASE_URL/rest/v1/agent_runs?select=id&limit=1" \
+            -H "apikey: $SUPABASE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_KEY")
+          
+          echo "📡 HTTP Response Code: $RESPONSE"
+          
+          if [ "$RESPONSE" = "200" ] || [ "$RESPONSE" = "206" ]; then
+            echo "✅ Supabase is alive and responding!"
+          else
+            echo "⚠️ Unexpected response code: $RESPONSE — check Supabase dashboard."
+            exit 1
+          fi

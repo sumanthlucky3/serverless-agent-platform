@@ -13,6 +13,8 @@ permissions:
 jobs:
   agent-response:
     runs-on: ubuntu-latest
+    # 🔒 Security: Only allow the repo owner to trigger the agent
+    if: github.actor == 'sumanthlucky3'
     steps:
       - name: 📂 Checkout Repository Code
         uses: actions/checkout@v4

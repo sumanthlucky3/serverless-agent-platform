@@ -1,0 +1,57 @@
+name: 🤖 Agent Task
+description: Submit a task for the Autonomous Serverless Agent to complete
+title: "[TASK] "
+labels: ["agent-task"]
+assignees:
+  - sumanthlucky3
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🤖 Serverless Agent Task Submission
+        Fill in the fields below to give the agent the best possible context. 
+        The agent will auto-classify your task and route it to the correct AI model.
+
+  - type: textarea
+    id: task_description
+    attributes:
+      label: 📋 Task Description
+      description: What do you want the agent to do? Be specific and clear.
+      placeholder: "e.g. Write a Python function that fetches weather data from the OpenWeatherMap API and returns a formatted summary."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: task_type
+    attributes:
+      label: 🎯 Task Type
+      description: What category does this task fall into?
+      options:
+        - GENERAL (Writing, Research, Analysis, Code)
+        - FRONTEND (UI Components, CSS, React, HTML)
+        - DATA (SQL, Analytics, Reporting)
+    validations:
+      required: true
+
+  - type: input
+    id: language
+    attributes:
+      label: 🛠️ Target Language / Framework (optional)
+      description: "e.g. Python, JavaScript, React, SQL"
+      placeholder: "Python"
+
+  - type: textarea
+    id: extra_context
+    attributes:
+      label: 📎 Additional Context (optional)
+      description: Any extra details, constraints, or examples the agent should know about.
+      placeholder: "The function should handle rate limiting and return JSON."
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: ✅ Confirmation
+      options:
+        - label: I confirm this task is for personal/development use only.
+          required: true
