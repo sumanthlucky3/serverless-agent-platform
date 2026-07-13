@@ -3,3 +3,7 @@ supabase
 google-genai
 huggingface_hub
 groq
+python-docx
+openpyxl
+python-pptx
+reportlab
