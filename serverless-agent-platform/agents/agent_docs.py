@@ -133,28 +133,70 @@ Format your output as {format_hint}.
 Be thorough, professional, and well-structured. Include relevant sections, details, and examples.
 Output ONLY the document content — no explanations, no preamble."""
 
-    headers = {
-        "Authorization": f"Bearer {openrouter_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://sumanthlucky3.github.io/serverless-agent-platform/",
-        "X-Title": "Serverless Agent Platform",
-    }
-    payload = {
-        "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
-        "messages": [
-            {"role": "system", "content": system_context},
-            {"role": "user", "content": task}
-        ],
-        "max_tokens": 2048,
-    }
+    hf_key = os.getenv("HUGGINGFACE_API_KEY") or os.getenv("VITE_HUGGINGFACE_API_KEY")
+    openrouter_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("VITE_OPENROUTER_API_KEY")
+    routed_model = os.getenv("HF_ROUTED_MODEL_ID")
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-        response.raise_for_status()
-        data = response.json()
+    doc_content = ""
+    model_used = ""
 
-    doc_content = data["choices"][0]["message"]["content"]
-    model_used = data.get("model", "nvidia/nemotron-ultra")
+    # ── Call Hugging Face API ────────────────────────────────────
+    if hf_key and routed_model:
+        print(f"[AGENT_DOCS] Using Hugging Face model: {routed_model}")
+        headers = {"Authorization": f"Bearer {hf_key}", "Content-Type": "application/json"}
+        payload = {
+            "inputs": f"<|system|>\n{system_context}<|end|>\n<|user|>\n{task}<|end|>\n<|assistant|>\n",
+            "parameters": {"max_new_tokens": 2048, "temperature": 0.2, "return_full_text": False}
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(
+                    f"https://api-inference.huggingface.co/models/{routed_model}",
+                    headers=headers,
+                    json=payload
+                )
+                response.raise_for_status()
+                data = response.json()
+                if isinstance(data, list) and "generated_text" in data[0]:
+                    doc_content = data[0]["generated_text"].strip()
+                elif "error" in data:
+                    raise Exception(data["error"])
+                else:
+                    doc_content = str(data)
+                model_used = routed_model
+        except Exception as e:
+            print(f"[AGENT_DOCS] HF Inference failed: {e}. Falling back to OpenRouter...")
+            hf_key = None # Force fallback
+
+    # ── Fallback to OpenRouter ───────────────────────────────────
+    if not doc_content and openrouter_key:
+        print("[AGENT_DOCS] Using OpenRouter fallback (NVIDIA Nemotron)...")
+        headers = {
+            "Authorization": f"Bearer {openrouter_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://sumanthlucky3.github.io/serverless-agent-platform/",
+            "X-Title": "Serverless Agent Platform",
+        }
+        payload = {
+            "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
+            "messages": [
+                {"role": "system", "content": system_context},
+                {"role": "user", "content": task}
+            ],
+            "max_tokens": 2048,
+        }
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+        doc_content = data["choices"][0]["message"]["content"]
+        model_used = data.get("model", "nvidia/nemotron-ultra")
+
+    if not doc_content:
+        raise ValueError("Neither Hugging Face nor OpenRouter keys are available, or both APIs failed.")
 
     print(f"[AGENT_DOCS] Content generated ({len(doc_content)} chars).")
 

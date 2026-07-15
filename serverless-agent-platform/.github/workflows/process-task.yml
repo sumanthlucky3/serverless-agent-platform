@@ -73,6 +73,7 @@ jobs:
           AGENT_ID: ${{ github.event.client_payload.agent_id || github.event.inputs.agent_id || 'agent_general' }}
           AGENT_TASK: ${{ github.event.client_payload.task || github.event.inputs.task }}
           SESSION_ID: ${{ github.event.client_payload.session_id || github.event.inputs.session_id }}
+          IMAGE_URLS: ${{ join(github.event.client_payload.image_urls, ',') }}
         run: python -m agents.dispatcher
 
       - name: Mark session as done

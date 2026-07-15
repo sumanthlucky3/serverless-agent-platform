@@ -7,7 +7,7 @@ type SubmissionResult = { success: boolean; sessionId?: string | number; message
 
 export function SubmitTask() {
   const [taskText, setTaskText] = useState('');
-  const [selectedAgent, setSelectedAgent] = useState('agent_general');
+  const [selectedAgent, setSelectedAgent] = useState('auto');
   const [priority, setPriority] = useState('normal');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -46,21 +46,43 @@ export function SubmitTask() {
 
       if (sessionErr) throw sessionErr;
 
-      // 2. Log the task as the first message in the session
+      // 2. Upload files to Supabase Storage (if any)
+      const uploadedUrls: string[] = [];
+      if (files.length > 0) {
+        for (const file of files) {
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${session.id}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+          const filePath = `uploads/${fileName}`;
+          
+          const { error: uploadError } = await supabase.storage
+            .from('agent-files')
+            .upload(filePath, file);
+            
+          if (!uploadError) {
+            const { data } = supabase.storage.from('agent-files').getPublicUrl(filePath);
+            uploadedUrls.push(data.publicUrl);
+          }
+        }
+      }
+
+      // 3. Log the task as the first message in the session
+      let attachmentsMarkdown = '';
+      if (uploadedUrls.length > 0) {
+        attachmentsMarkdown = `\n\n**Attachments:**\n${uploadedUrls.map((url, i) => `${i + 1}. [Attached File](${url})`).join('\n')}`;
+      }
+      
       await supabase.from('agent_messages').insert({
         session_id: session.id,
         role: 'user',
-        content: `**Task Submitted:** ${taskText}\n\n**Priority:** ${priority}\n**Attachments:** ${files.length > 0 ? files.map(f => f.name).join(', ') : 'None'}`,
+        content: `**Task Submitted:** ${taskText}\n\n**Priority:** ${priority}${attachmentsMarkdown}`,
       });
 
-      // 3. Trigger the GitHub Actions workflow to actually run the agent
+      // 4. Trigger the GitHub Actions workflow to actually run the agent
       await fetch('https://api.github.com/repos/sumanthlucky3/serverless-agent-platform/dispatches', {
         method: 'POST',
         headers: {
           'Accept': 'application/vnd.github+json',
           'Content-Type': 'application/json',
-          // Note: this uses a public repo — no token needed for repository_dispatch on public repos
-          // If this fails, the task is still saved in Supabase and can be run manually from GitHub Actions
         },
         body: JSON.stringify({
           event_type: 'run-agent-task',
@@ -68,9 +90,11 @@ export function SubmitTask() {
             session_id: String(session.id),
             agent_id: selectedAgent,
             task: taskText,
+            image_urls: uploadedUrls // Pass image URLs directly for the router
           }
         })
       });
+
 
       setResult({ success: true, sessionId: session.id, message: `Task dispatched! Session #${session.id} is queued — your agent is starting up on GitHub Actions.` });
       setTaskText('');
@@ -137,8 +161,8 @@ export function SubmitTask() {
                   agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)
                 ) : (
                   <>
-                    <option value="agent_general">🤖 General Assistant</option>
-                    <option value="agent_docs">📄 Docs & Reports</option>
+                    <option value="auto">🧠 Smart Router (Auto)</option>
+                    <option value="agent_docs">📄 Docs & Reports Agent</option>
                     <option value="agent_jobs">💼 Job Application Agent</option>
                   </>
                 )}
