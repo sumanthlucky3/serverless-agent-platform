@@ -33,8 +33,10 @@ export function Dashboard() {
   const [metrics, setMetrics] = useState({
     totalRuns: 0,
     activeAgents: 0,
+    successRate: '—',
     loading: true
   });
+  const [liveRuns, setLiveRuns] = useState<any[]>([]);
 
   useEffect(() => {
     async function fetchMetrics() {
@@ -48,10 +50,38 @@ export function Dashboard() {
         .from('agents')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'active');
+
+      // Get done vs total for success rate
+      const { count: doneCount } = await supabase
+        .from('agent_sessions')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'done');
+
+      const total = sessionsCount || 0;
+      const done = doneCount || 0;
+      const rate = total > 0 ? ((done / total) * 100).toFixed(1) + '%' : '—';
+
+      // Get recent runs
+      const { data: sessions } = await supabase
+        .from('agent_sessions')
+        .select('id, title, status, started_at, agents(name)')
+        .order('started_at', { ascending: false })
+        .limit(5);
+
+      if (sessions) {
+        setLiveRuns(sessions.map((s: any) => ({
+          id: '#' + s.id.toString().padStart(3, '0'),
+          task: s.title || 'New Conversation',
+          agent: s.agents?.name || 'General Assistant',
+          duration: '—',
+          status: s.status === 'active' ? 'RUNNING' : s.status === 'done' ? 'DONE' : s.status === 'failed' ? 'FAILED' : 'DONE',
+        })));
+      }
         
       setMetrics({
-        totalRuns: sessionsCount || 0,
+        totalRuns: total,
         activeAgents: agentsCount || 0,
+        successRate: rate,
         loading: false
       });
     }
@@ -64,8 +94,8 @@ export function Dashboard() {
       {/* 1. KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <KpiCard title="TOTAL RUNS" value={metrics.loading ? "..." : metrics.totalRuns.toString()} trend="across all time" trendUp icon={Activity} />
-        <KpiCard title="SUCCESS RATE" value="94.3%" trend="+2.1%" trendUp icon={CheckCircle2} />
-        <KpiCard title="AVG RESPONSE" value="38s" trend="-4s faster" trendUp icon={Clock} />
+        <KpiCard title="SUCCESS RATE" value={metrics.loading ? "..." : metrics.successRate} trend="completed sessions" trendUp icon={CheckCircle2} />
+        <KpiCard title="AVG RESPONSE" value="< 2s" trend="AI streaming" trendUp icon={Clock} />
         <KpiCard title="ACTIVE AGENTS" value={metrics.loading ? "..." : metrics.activeAgents.toString()} subtitle="online" icon={Bot} />
       </div>
 
@@ -160,7 +190,7 @@ export function Dashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border text-text-secondary">
-                {recentRuns.map((run) => (
+                {(liveRuns.length > 0 ? liveRuns : recentRuns).map((run) => (
                   <tr key={run.id} className="hover:bg-background-secondary transition-colors group">
                     <td className="px-5 py-3.5 font-medium text-text-muted group-hover:text-text-secondary">{run.id}</td>
                     <td className="px-5 py-3.5 font-medium text-text-primary">{run.task}</td>
