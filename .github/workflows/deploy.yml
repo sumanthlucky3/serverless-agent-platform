@@ -42,9 +42,6 @@ jobs:
           npm run build
           cp dist/index.html dist/404.html
 
-      - name: Setup GitHub Pages
-        uses: actions/configure-pages@v4
-
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
