@@ -78,11 +78,17 @@ export function SubmitTask() {
       });
 
       // 4. Trigger the GitHub Actions workflow to actually run the agent
-      await fetch('https://api.github.com/repos/sumanthlucky3/serverless-agent-platform/dispatches', {
+      const githubToken = localStorage.getItem('github_token');
+      if (!githubToken) {
+        throw new Error("GitHub Token (PAT) is missing. Please add it in Settings.");
+      }
+
+      const dispatchResponse = await fetch('https://api.github.com/repos/sumanthlucky3/serverless-agent-platform/dispatches', {
         method: 'POST',
         headers: {
           'Accept': 'application/vnd.github+json',
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${githubToken}`
         },
         body: JSON.stringify({
           event_type: 'run-agent-task',
@@ -94,6 +100,10 @@ export function SubmitTask() {
           }
         })
       });
+      
+      if (!dispatchResponse.ok) {
+         throw new Error(`GitHub API Error: ${dispatchResponse.status} ${await dispatchResponse.text()}`);
+      }
 
 
       setResult({ success: true, sessionId: session.id, message: `Task dispatched! Session #${session.id} is queued — your agent is starting up on GitHub Actions.` });

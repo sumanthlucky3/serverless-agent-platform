@@ -61,18 +61,21 @@ function SaveBanner({ message, type }: { message: string, type: 'success' | 'err
 
 function ApiKeysSection() {
   const [openrouterKey, setOpenrouterKey] = useState('');
+  const [githubToken, setGithubToken] = useState('');
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
     // Load from localStorage so it persists across sessions
     setOpenrouterKey(localStorage.getItem('openrouter_key') || '');
+    setGithubToken(localStorage.getItem('github_token') || '');
   }, []);
 
   const handleSave = async () => {
     setSaving(true);
     try {
       localStorage.setItem('openrouter_key', openrouterKey);
+      localStorage.setItem('github_token', githubToken);
       setBanner({ message: 'Settings saved successfully!', type: 'success' });
     } catch {
       setBanner({ message: 'Failed to save settings.', type: 'error' });
@@ -100,6 +103,16 @@ function ApiKeysSection() {
           value={openrouterKey}
           onChange={setOpenrouterKey}
           isConnected={!!openrouterKey}
+        />
+        <ApiKeyCard
+          icon={Key}
+          iconColor="text-accent-green"
+          title="GitHub Token (PAT)"
+          description="Required to trigger backend agents via Actions"
+          placeholder="ghp_..."
+          value={githubToken}
+          onChange={setGithubToken}
+          isConnected={!!githubToken}
         />
         <ApiKeyCard
           icon={Bot}
