@@ -11,12 +11,6 @@ Vision:
   5. Log result to Supabase
 
 Status: COMING SOON
-  - Requires Gmail OAuth2 setup (Google Cloud Console)
-  - Requires resume file upload to Supabase Storage
-  - Will be activated once Gmail connector is configured
-
-Current behaviour: Returns a clear status message explaining
-what this agent will do and how to set it up.
 """
 
 import os
@@ -32,7 +26,7 @@ This agent is currently under development.
 ## What it will do (v1):
 1. **Read Gmail** for job alert emails (Naukri, LinkedIn, Indeed alerts)
 2. **Extract** job title, company name, and job description from email
-3. **Match** the job description against your uploaded resume using Gemini AI
+3. **Match** the job description against your uploaded resume using AI
 4. **Score** the match (0-100%) and filter jobs above your threshold
 5. **Send** a professional application email to the recruiter/HR
 6. **Log** every application to your Supabase dashboard
@@ -52,19 +46,6 @@ This agent is currently under development.
 - Follow-up email automation after 7 days
 
 Stay tuned!"""
-
-    if supabase:
-        try:
-            supabase.table("agent_runs").insert({
-                "task":       task,
-                "routed_to":  "JOBS",
-                "result":     output_text,
-                "model_used": "pending_setup",
-                "tokens_used": 0,
-                "status":     "coming_soon"
-            }).execute()
-        except Exception as e:
-            print(f"[AGENT_JOBS] Warning: Supabase log failed — {e}")
 
     return {
         "output_text": output_text,

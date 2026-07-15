@@ -3,187 +3,164 @@ agents/agent_docs.py
 =====================
 Docs & Reports Agent — generates professional documents from a prompt.
 
-Capabilities (v1):
-  - Word documents (.docx)     via python-docx
-  - Excel spreadsheets (.xlsx) via openpyxl
-  - PowerPoint slides (.pptx)  via python-pptx
-  - PDF reports                via reportlab
-  - Plain Markdown (.md)       built-in
-
-Powered by: Google Gemini (content generation) +
+Powered by: NVIDIA Nemotron via OpenRouter API (content generation) +
             python-docx / openpyxl / python-pptx (file creation)
-
-Future upgrades:
-  - Upload generated file to Supabase Storage
-  - Return download link in output
-  - Support image generation (charts, diagrams)
 """
 
 import os
-import json
 import re
-from google.antigravity import Agent, LocalAgentConfig
+import httpx
 
 
 # ── Helpers — file generators ────────────────────────────────────────────────
 
 def _write_docx(content: str, filename: str) -> str:
     """Write a Word .docx file from markdown-style content."""
-    from docx import Document
-    from docx.shared import Pt, RGBColor
-    doc = Document()
-    for line in content.split("\n"):
-        stripped = line.strip()
-        if stripped.startswith("# "):
-            p = doc.add_heading(stripped[2:], level=1)
-        elif stripped.startswith("## "):
-            p = doc.add_heading(stripped[3:], level=2)
-        elif stripped.startswith("### "):
-            p = doc.add_heading(stripped[4:], level=3)
-        elif stripped.startswith("- ") or stripped.startswith("* "):
-            doc.add_paragraph(stripped[2:], style="List Bullet")
-        elif stripped == "":
-            doc.add_paragraph()
-        else:
-            doc.add_paragraph(stripped)
-    doc.save(filename)
+    try:
+        from docx import Document
+        doc = Document()
+        for line in content.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("# "):
+                doc.add_heading(stripped[2:], level=1)
+            elif stripped.startswith("## "):
+                doc.add_heading(stripped[3:], level=2)
+            elif stripped.startswith("### "):
+                doc.add_heading(stripped[4:], level=3)
+            elif stripped.startswith("- ") or stripped.startswith("* "):
+                doc.add_paragraph(stripped[2:], style="List Bullet")
+            elif stripped == "":
+                doc.add_paragraph()
+            else:
+                doc.add_paragraph(stripped)
+        doc.save(filename)
+    except ImportError:
+        print("[AGENT_DOCS] python-docx not installed. Falling back to plain text.")
+        raise
     return filename
 
 
 def _write_xlsx(content: str, filename: str) -> str:
-    """Write an Excel .xlsx file. Expects content with pipe-separated rows."""
-    import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Agent Report"
-
-    header_fill = PatternFill(start_color="1E40AF", end_color="1E40AF", fill_type="solid")
-    header_font = Font(bold=True, color="FFFFFF")
-
-    lines = [l for l in content.split("\n") if "|" in l and l.strip()]
-    for ri, line in enumerate(lines):
-        cells = [c.strip() for c in line.split("|") if c.strip()]
-        for ci, val in enumerate(cells):
-            cell = ws.cell(row=ri+1, column=ci+1, value=val)
-            if ri == 0:
-                cell.fill = header_fill
-                cell.font = header_font
-            cell.alignment = Alignment(wrap_text=True)
-
-    # Auto-width columns
-    for col in ws.columns:
-        max_len = max((len(str(c.value or "")) for c in col), default=10)
-        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
-
-    wb.save(filename)
+    """Write an Excel .xlsx file from CSV-style content."""
+    try:
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        for row in content.split("\n"):
+            if row.strip():
+                ws.append(row.split(","))
+        wb.save(filename)
+    except ImportError:
+        print("[AGENT_DOCS] openpyxl not installed. Falling back to plain text.")
+        raise
     return filename
 
 
 def _write_pptx(content: str, filename: str) -> str:
-    """Write a PowerPoint .pptx from content with slide markers."""
-    from pptx import Presentation
-    from pptx.util import Inches, Pt
-    from pptx.dml.color import RGBColor
-    prs = Presentation()
-    slide_layout_title = prs.slide_layouts[0]  # Title slide
-    slide_layout_body  = prs.slide_layouts[1]  # Title + content
-
-    slides_raw = re.split(r"(?m)^---+$", content)
-    for i, slide_text in enumerate(slides_raw):
-        lines = [l.strip() for l in slide_text.strip().split("\n") if l.strip()]
-        if not lines:
-            continue
-        title = lines[0].lstrip("#").strip()
-        body  = "\n".join(lines[1:])
-
-        layout = slide_layout_title if i == 0 else slide_layout_body
-        slide  = prs.slides.add_slide(layout)
-
-        if slide.shapes.title:
-            slide.shapes.title.text = title
-        if len(slide.placeholders) > 1 and body:
-            slide.placeholders[1].text = body
-
-    prs.save(filename)
+    """Write a PowerPoint .pptx file from markdown-style content."""
+    try:
+        from pptx import Presentation
+        prs = Presentation()
+        slides = content.split("---")
+        for slide_text in slides:
+            if not slide_text.strip():
+                continue
+            slide = prs.slides.add_slide(prs.slide_layouts[1])
+            lines = [l.strip() for l in slide_text.strip().split("\n") if l.strip()]
+            if lines:
+                slide.shapes.title.text = lines[0].replace("#", "").strip()
+                tf = slide.placeholders[1].text_frame
+                for line in lines[1:]:
+                    p = tf.add_paragraph()
+                    p.text = line.replace("-", "").replace("*", "").strip()
+        prs.save(filename)
+    except ImportError:
+        print("[AGENT_DOCS] python-pptx not installed. Falling back to plain text.")
+        raise
     return filename
 
 
 def _write_pdf(content: str, filename: str) -> str:
-    """Write a PDF report from plain text content."""
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import cm
-    from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
-    from reportlab.lib.enums import TA_LEFT
-
-    doc    = SimpleDocTemplate(filename, pagesize=A4,
-                               leftMargin=2.5*cm, rightMargin=2.5*cm,
-                               topMargin=2*cm, bottomMargin=2*cm)
-    styles = getSampleStyleSheet()
-    story  = []
-
-    for line in content.split("\n"):
-        stripped = line.strip()
-        if stripped.startswith("# "):
-            story.append(Paragraph(stripped[2:], styles["Heading1"]))
-            story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#16A34A")))
-        elif stripped.startswith("## "):
-            story.append(Paragraph(stripped[3:], styles["Heading2"]))
-        elif stripped.startswith("### "):
-            story.append(Paragraph(stripped[4:], styles["Heading3"]))
-        elif stripped == "":
-            story.append(Spacer(1, 0.3*cm))
-        else:
-            story.append(Paragraph(stripped, styles["Normal"]))
-
-    doc.build(story)
+    """Write a PDF file."""
+    try:
+        from reportlab.pdfgen import canvas
+        c = canvas.Canvas(filename)
+        y = 800
+        for line in content.split("\n"):
+            c.drawString(50, y, line.strip()[:100])
+            y -= 20
+            if y < 50:
+                c.showPage()
+                y = 800
+        c.save()
+    except ImportError:
+        print("[AGENT_DOCS] reportlab not installed. Falling back to plain text.")
+        raise
     return filename
 
-
-# ── Main agent entry point ────────────────────────────────────────────────────
 
 async def run(task: str, supabase, agent_id: str, session_id=None) -> dict:
     print("[AGENT_DOCS] Starting Docs & Reports Agent...")
 
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_key:
-        raise ValueError("GEMINI_API_KEY is required for agent_docs")
+    openrouter_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("VITE_OPENROUTER_API_KEY")
+    if not openrouter_key:
+        raise ValueError("OPENROUTER_API_KEY is required for agent_docs")
 
-    # ── Detect desired output format from task ────────────────────
-    task_lower = task.lower()
-    if any(w in task_lower for w in ["excel", "spreadsheet", "xlsx", "table", "csv"]):
-        output_format = "xlsx"
-        format_hint   = "pipe-separated table rows (first row = headers)"
-    elif any(w in task_lower for w in ["powerpoint", "ppt", "pptx", "presentation", "slides"]):
-        output_format = "pptx"
-        format_hint   = "slides separated by '---', each starting with a title line"
-    elif any(w in task_lower for w in ["pdf"]):
-        output_format = "pdf"
-        format_hint   = "well-structured markdown text with # headings"
-    else:
+    # ── Step 0: Determine output format from task ─────────────────
+    lower_task = task.lower()
+    output_format = "md"
+    format_hint = "plain markdown"
+    
+    if "word" in lower_task or "docx" in lower_task or "document" in lower_task:
         output_format = "docx"
-        format_hint   = "well-structured markdown text with # headings and bullet points"
+        format_hint = "structured text with # headings and bullet points"
+    elif "excel" in lower_task or "xlsx" in lower_task or "spreadsheet" in lower_task or "csv" in lower_task:
+        output_format = "xlsx"
+        format_hint = "comma-separated values (CSV) format"
+    elif "powerpoint" in lower_task or "pptx" in lower_task or "presentation" in lower_task or "slide" in lower_task:
+        output_format = "pptx"
+        format_hint = "slides separated by '---' with a # Title and bullet points"
+    elif "pdf" in lower_task:
+        output_format = "pdf"
+        format_hint = "plain text suitable for a PDF report"
 
-    print(f"[AGENT_DOCS] Detected output format: {output_format}")
+    print(f"[AGENT_DOCS] Detected format: {output_format}")
 
-    # ── Step 1: Ask Gemini to generate structured content ─────────
+    # ── Step 1: Ask LLM to generate structured content ─────────
     system_context = f"""You are a professional document writer.
 Generate content for a {output_format.upper()} document based on the user's request.
 Format your output as {format_hint}.
 Be thorough, professional, and well-structured. Include relevant sections, details, and examples.
 Output ONLY the document content — no explanations, no preamble."""
 
-    config = LocalAgentConfig(api_key=gemini_key)
-    async with Agent(config) as agent:
-        response    = await agent.chat(f"{system_context}\n\nTask: {task}")
-        doc_content = await response.text()
+    headers = {
+        "Authorization": f"Bearer {openrouter_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://sumanthlucky3.github.io/serverless-agent-platform/",
+        "X-Title": "Serverless Agent Platform",
+    }
+    payload = {
+        "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
+        "messages": [
+            {"role": "system", "content": system_context},
+            {"role": "user", "content": task}
+        ],
+        "max_tokens": 2048,
+    }
 
-    print(f"[AGENT_DOCS] Gemini generated {len(doc_content)} chars of content.")
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+        response.raise_for_status()
+        data = response.json()
+
+    doc_content = data["choices"][0]["message"]["content"]
+    model_used = data.get("model", "nvidia/nemotron-ultra")
+
+    print(f"[AGENT_DOCS] Content generated ({len(doc_content)} chars).")
 
     # ── Step 2: Create the file ───────────────────────────────────
-    safe_name   = re.sub(r"[^a-zA-Z0-9_]", "_", task[:40])
+    safe_name = re.sub(r"[^a-zA-Z0-9_]", "_", task[:20])
+    if not safe_name: safe_name = "report"
     output_file = f"output_{safe_name}.{output_format}"
 
     try:
@@ -195,6 +172,9 @@ Output ONLY the document content — no explanations, no preamble."""
             _write_pptx(doc_content, output_file)
         elif output_format == "pdf":
             _write_pdf(doc_content, output_file)
+        elif output_format == "md":
+            with open(output_file, "w", encoding="utf-8") as f:
+                f.write(doc_content)
         print(f"[AGENT_DOCS] File created: {output_file}")
     except Exception as e:
         print(f"[AGENT_DOCS] File creation failed: {e}. Falling back to plain text.")
@@ -202,19 +182,10 @@ Output ONLY the document content — no explanations, no preamble."""
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(doc_content)
 
-    # ── Step 3: Log to Supabase ───────────────────────────────────
+    # ── Step 3: Log file to Supabase ───────────────────────────────────
     summary_text = f"[{output_format.upper()} generated] {output_file}\n\n{doc_content[:500]}..."
     if supabase:
         try:
-            supabase.table("agent_runs").insert({
-                "task":       task,
-                "routed_to":  "DOCS",
-                "result":     summary_text,
-                "model_used": "gemini/antigravity-preview-05-2026",
-                "tokens_used": 0,
-                "status":     "success"
-            }).execute()
-
             # Log file record
             supabase.table("agent_files").insert({
                 "session_id": int(session_id) if session_id else None,
@@ -224,7 +195,7 @@ Output ONLY the document content — no explanations, no preamble."""
                 "direction":  "output"
             }).execute()
 
-            print("[AGENT_DOCS] Logged to Supabase.")
+            print("[AGENT_DOCS] File logged to Supabase.")
         except Exception as e:
             print(f"[AGENT_DOCS] Warning: Supabase log failed — {e}")
 
@@ -232,6 +203,6 @@ Output ONLY the document content — no explanations, no preamble."""
         "output_text":  summary_text,
         "output_file":  output_file,
         "output_format": output_format,
-        "model_used":   "gemini/antigravity-preview-05-2026",
+        "model_used":   model_used,
         "status":       "success"
     }

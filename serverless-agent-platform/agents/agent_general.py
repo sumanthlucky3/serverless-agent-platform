@@ -57,21 +57,7 @@ async def run(task: str, supabase, agent_id: str, session_id=None) -> dict:
 
     print(f"[AGENT_GENERAL] Output ({len(output_text)} chars) generated via {model_used}.")
 
-    # ── Write result back to agent_messages in Supabase ──────────
-    if supabase and session_id:
-        try:
-            supabase.table("agent_messages").insert({
-                "session_id": int(session_id),
-                "role": "assistant",
-                "content": output_text,
-            }).execute()
-            # Mark session done
-            supabase.table("agent_sessions").update({
-                "status": "done"
-            }).eq("id", int(session_id)).execute()
-            print("[AGENT_GENERAL] Result logged to agent_messages.")
-        except Exception as e:
-            print(f"[AGENT_GENERAL] Warning: Could not log response — {e}")
+    # ── (Logging to agent_messages and updating agent_sessions is handled by dispatcher.py and process-task.yml) ──
 
     return {
         "output_text": output_text,
