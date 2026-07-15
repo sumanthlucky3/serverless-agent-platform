@@ -4,82 +4,77 @@ agents/agent_general.py
 General Assistant — handles research, writing, code generation,
 analysis, and any task that doesn't require specialist file output.
 
-Powered by: Google Gemini via Antigravity SDK
+Powered by: NVIDIA Nemotron via OpenRouter API
 """
 
 import os
-from groq import Groq
-from google.antigravity import Agent, LocalAgentConfig
+import httpx
 
 
 async def run(task: str, supabase, agent_id: str, session_id=None) -> dict:
     print("[AGENT_GENERAL] Starting General Assistant...")
 
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    groq_key   = os.getenv("GROQ_API_KEY")
+    openrouter_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("VITE_OPENROUTER_API_KEY")
 
-    if not gemini_key:
-        raise ValueError("GEMINI_API_KEY is required for agent_general")
+    if not openrouter_key:
+        raise ValueError("OPENROUTER_API_KEY is required for agent_general")
 
-    # ── Step 1: Groq fast classification (optional sub-routing) ──
-    category = "GENERAL"
-    if groq_key:
-        try:
-            groq_client = Groq(api_key=groq_key)
-            resp = groq_client.chat.completions.create(
-                messages=[
-                    {"role": "system",
-                     "content": "You are a task classifier. Reply with exactly one word: FRONTEND or GENERAL."},
-                    {"role": "user", "content": task}
-                ],
-                model="llama-3.3-70b-versatile",
-                temperature=0,
-                max_tokens=10,
-            )
-            category = resp.choices[0].message.content.strip().upper()
-            print(f"[AGENT_GENERAL] Groq classification: {category}")
-        except Exception as e:
-            print(f"[AGENT_GENERAL] Groq classification failed, defaulting to GENERAL: {e}")
+    # ── Call OpenRouter (NVIDIA Nemotron) ─────────────────────────
+    headers = {
+        "Authorization": f"Bearer {openrouter_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://sumanthlucky3.github.io/serverless-agent-platform/",
+        "X-Title": "Serverless Agent Platform",
+    }
+    payload = {
+        "model": "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a highly capable AI assistant on the Serverless Agent Platform. "
+                    "You complete tasks thoroughly, accurately and concisely. "
+                    "Format your response in clean markdown."
+                )
+            },
+            {"role": "user", "content": task}
+        ],
+        "max_tokens": 2048,
+        "temperature": 0.7,
+    }
 
-    # ── Step 2: Route to appropriate model ───────────────────────
-    if "FRONTEND" in category:
-        from huggingface_hub import InferenceClient
-        hf_key = os.getenv("HUGGINGFACE_API_KEY")
-        hf_client = InferenceClient(api_key=hf_key)
-        model_id  = "HuggingFaceH4/zephyr-7b-beta"
-        response  = hf_client.chat.completions.create(
-            model=model_id,
-            messages=[{"role": "user", "content": task}]
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload
         )
-        output_text = response.choices[0].message.content
-        model_used  = model_id
-    else:
-        config = LocalAgentConfig(api_key=gemini_key)
-        async with Agent(config) as agent:
-            response    = await agent.chat(task)
-            output_text = await response.text()
-        model_used = "gemini/antigravity-preview-05-2026"
+        response.raise_for_status()
+        data = response.json()
 
-    print(f"[AGENT_GENERAL] Output ({len(output_text)} chars) generated.")
+    output_text = data["choices"][0]["message"]["content"]
+    model_used = data.get("model", "nvidia/nemotron-ultra")
 
-    # ── Step 3: Log to agent_runs (backward compatible) ──────────
-    if supabase:
+    print(f"[AGENT_GENERAL] Output ({len(output_text)} chars) generated via {model_used}.")
+
+    # ── Write result back to agent_messages in Supabase ──────────
+    if supabase and session_id:
         try:
-            supabase.table("agent_runs").insert({
-                "task":       task,
-                "routed_to":  category,
-                "result":     output_text,
-                "model_used": model_used,
-                "tokens_used": 0,
-                "status":     "success"
+            supabase.table("agent_messages").insert({
+                "session_id": int(session_id),
+                "role": "assistant",
+                "content": output_text,
             }).execute()
-            print("[AGENT_GENERAL] Logged to agent_runs.")
+            # Mark session done
+            supabase.table("agent_sessions").update({
+                "status": "done"
+            }).eq("id", int(session_id)).execute()
+            print("[AGENT_GENERAL] Result logged to agent_messages.")
         except Exception as e:
-            print(f"[AGENT_GENERAL] Warning: Could not log to agent_runs — {e}")
+            print(f"[AGENT_GENERAL] Warning: Could not log response — {e}")
 
     return {
         "output_text": output_text,
-        "model_used":  model_used,
-        "category":    category,
-        "status":      "success"
+        "model_used": model_used,
+        "status": "success"
     }

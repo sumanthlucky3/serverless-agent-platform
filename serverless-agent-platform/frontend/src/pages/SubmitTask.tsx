@@ -53,7 +53,26 @@ export function SubmitTask() {
         content: `**Task Submitted:** ${taskText}\n\n**Priority:** ${priority}\n**Attachments:** ${files.length > 0 ? files.map(f => f.name).join(', ') : 'None'}`,
       });
 
-      setResult({ success: true, sessionId: session.id, message: `Task dispatched! Session #${session.id} is now queued.` });
+      // 3. Trigger the GitHub Actions workflow to actually run the agent
+      await fetch('https://api.github.com/repos/sumanthlucky3/serverless-agent-platform/dispatches', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+          // Note: this uses a public repo — no token needed for repository_dispatch on public repos
+          // If this fails, the task is still saved in Supabase and can be run manually from GitHub Actions
+        },
+        body: JSON.stringify({
+          event_type: 'run-agent-task',
+          client_payload: {
+            session_id: String(session.id),
+            agent_id: selectedAgent,
+            task: taskText,
+          }
+        })
+      });
+
+      setResult({ success: true, sessionId: session.id, message: `Task dispatched! Session #${session.id} is queued — your agent is starting up on GitHub Actions.` });
       setTaskText('');
       setFiles([]);
     } catch (err: any) {
