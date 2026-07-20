@@ -4,8 +4,10 @@
  * The model is now chosen externally by modelRouter.ts and passed in.
  */
 
-const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
-const HUGGINGFACE_API_KEY = import.meta.env.VITE_HUGGINGFACE_API_KEY;
+// Keys can be provided via .env.local OR via the Settings UI (localStorage)
+const getOpenRouterKey = () => localStorage.getItem('openrouter_key') || import.meta.env.VITE_OPENROUTER_API_KEY;
+const getHuggingFaceKey = () => localStorage.getItem('hf_key') || import.meta.env.VITE_HUGGINGFACE_API_KEY;
+
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // A message content part — either plain text or an image
@@ -34,16 +36,17 @@ export function fileToDataURL(file: File): Promise<string> {
  * Returns an object URL to the generated Blob.
  */
 export async function generateImage(prompt: string, model: string = 'black-forest-labs/FLUX.1-schnell'): Promise<string> {
-  if (!HUGGINGFACE_API_KEY) {
+  const hfKey = getHuggingFaceKey();
+  if (!hfKey) {
     throw new Error(
-      'HuggingFace API Key is missing. Please add VITE_HUGGINGFACE_API_KEY to your .env.local file to generate images.'
+      'HuggingFace API Key is missing. Please add it in Settings or .env.local to generate images.'
     );
   }
 
   const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${HUGGINGFACE_API_KEY}`,
+      'Authorization': `Bearer ${hfKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ inputs: prompt }),
@@ -110,9 +113,10 @@ export async function* streamChat(
   modelId: string,
   taskType: string = 'chat'
 ) {
-  if (!OPENROUTER_API_KEY) {
+  const orKey = getOpenRouterKey();
+  if (!orKey) {
     throw new Error(
-      'OpenRouter API Key is missing. Please add VITE_OPENROUTER_API_KEY to your .env.local file.'
+      'OpenRouter API Key is missing. Please add it in Settings or .env.local.'
     );
   }
 
@@ -122,7 +126,7 @@ export async function* streamChat(
     method: 'POST',
     headers: {
       'Content-Type':  'application/json',
-      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+      'Authorization': `Bearer ${orKey}`,
       'HTTP-Referer':  window.location.origin,
       'X-Title':       'Serverless Agent Platform',
     },
