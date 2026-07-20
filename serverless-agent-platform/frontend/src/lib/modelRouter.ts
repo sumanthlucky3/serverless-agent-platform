@@ -4,10 +4,10 @@
  * from OpenRouter's free tier. Falls back gracefully if a model is unavailable.
  */
 
-export type TaskType = 'vision' | 'code' | 'reasoning' | 'creative' | 'chat';
+export type TaskType = 'vision' | 'code' | 'reasoning' | 'creative' | 'chat' | 'image_generation';
 
 export interface ModelProfile {
-  id: string;           // OpenRouter model ID
+  id: string;           // OpenRouter or HF model ID
   displayName: string;  // Human-readable name
   taskType: TaskType;
   emoji: string;
@@ -19,6 +19,16 @@ export interface ModelProfile {
 
 /** All available free-tier models on OpenRouter (verified working 2026) */
 export const MODEL_CATALOG: Record<TaskType, ModelProfile> = {
+  image_generation: {
+    id: 'black-forest-labs/FLUX.1-schnell',
+    displayName: 'FLUX.1 Schnell (HF)',
+    taskType: 'image_generation',
+    emoji: '🎨',
+    tagline: 'Text-to-Image · Fast Generation',
+    reason: 'Image generation intent detected — routing to HuggingFace FLUX for fast high-quality image generation.',
+    contextWindow: 'N/A',
+    speed: 'fast',
+  },
   vision: {
     id: 'nvidia/nemotron-nano-12b-v2-vl:free',
     displayName: 'Nemotron Nano 12B VL',
@@ -74,6 +84,13 @@ export const MODEL_CATALOG: Record<TaskType, ModelProfile> = {
 
 /** Keyword patterns for each task type (order matters — first match wins) */
 const TASK_PATTERNS: Array<{ type: TaskType; pattern: RegExp; label: string }> = [
+  // Image Generation
+  {
+    type: 'image_generation',
+    label: 'Image generation request detected',
+    pattern:
+      /\b(generate|create|draw|paint|render|edit|change)\b.*(?:image|picture|photo|background|art)/i,
+  },
   // Code / Engineering
   {
     type: 'code',

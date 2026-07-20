@@ -203,7 +203,7 @@ function AgentWorkspace({ agentId, onBack }: { agentId: string; onBack: () => vo
     setCurrentModel(result.model);
     setRoutingState('done');
 
-    // ── Step 2: Stream response ──
+    // ── Step 2: Stream response or Generate Image ──
     setIsStreaming(true);
     setMessages(prev => [...prev, { role: 'assistant', content: '', modelUsed: result.model.displayName }]);
 
@@ -224,7 +224,45 @@ function AgentWorkspace({ agentId, onBack }: { agentId: string; onBack: () => vo
         });
       }
 
-      // Build API history
+      if (result.taskType === 'image_generation') {
+        // Handle HF Image Generation
+        import('../lib/llm').then(async ({ generateImage }) => {
+          try {
+             const imageUrl = await generateImage(textInput);
+             setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  role: 'assistant',
+                  content: 'Here is the image you requested:',
+                  previewUrls: [imageUrl],
+                  modelUsed: result.model.displayName
+                };
+                return updated;
+             });
+
+             if (currentSessionId) {
+                await supabase.from('agent_messages').insert({
+                  session_id: currentSessionId, role: 'assistant', content: `[Generated Image: ${imageUrl}]`,
+                });
+             }
+          } catch (err: any) {
+             setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  role: 'assistant',
+                  content: `**Error Generating Image:** ${err.message}\n\n*Tip: Make sure VITE_HUGGINGFACE_API_KEY is in .env.local*`,
+                  modelUsed: result.model.displayName
+                };
+                return updated;
+             });
+          } finally {
+             setIsStreaming(false);
+          }
+        });
+        return; // Early return since we handled it asynchronously above
+      }
+
+      // Handle Text Streaming (OpenRouter)
       const apiHistory: ChatMessage[] = await Promise.all(
         [...historyBefore, userMsg].map(async (m): Promise<ChatMessage> => {
           if (m === userMsg && imageFiles.length > 0) {
@@ -341,9 +379,8 @@ function AgentWorkspace({ agentId, onBack }: { agentId: string; onBack: () => vo
               )}
 
               <div style={{ maxWidth: msg.role === 'user' ? 540 : 700 }}>
-                {/* Image previews in user bubble */}
-                {msg.role === 'user' && msg.previewUrls && msg.previewUrls.length > 0 && (
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8, justifyContent: 'flex-end' }}>
+                {msg.previewUrls && msg.previewUrls.length > 0 && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8, justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
                     {msg.previewUrls.map((url, pi) => (
                       <img key={pi} src={url} alt="attachment" style={{ maxHeight: 200, maxWidth: 300, borderRadius: 12, border: `2px solid ${agentColor}40`, objectFit: 'cover', boxShadow: `0 4px 20px ${agentColor}20` }} />
                     ))}

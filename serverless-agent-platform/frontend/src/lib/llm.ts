@@ -5,6 +5,7 @@
  */
 
 const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
+const HUGGINGFACE_API_KEY = import.meta.env.VITE_HUGGINGFACE_API_KEY;
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // A message content part — either plain text or an image
@@ -28,6 +29,37 @@ export function fileToDataURL(file: File): Promise<string> {
   });
 }
 
+/**
+ * Call HuggingFace Inference API to generate an image.
+ * Returns an object URL to the generated Blob.
+ */
+export async function generateImage(prompt: string, model: string = 'black-forest-labs/FLUX.1-schnell'): Promise<string> {
+  if (!HUGGINGFACE_API_KEY) {
+    throw new Error(
+      'HuggingFace API Key is missing. Please add VITE_HUGGINGFACE_API_KEY to your .env.local file to generate images.'
+    );
+  }
+
+  const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${HUGGINGFACE_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ inputs: prompt }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HuggingFace API Error (${response.status}): ${errorText}`);
+  }
+
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
+
+
 /** Build a multimodal user content array from text + image files */
 export async function buildVisionContent(text: string, images: File[]): Promise<ContentPart[]> {
   const parts: ContentPart[] = [];
@@ -44,10 +76,12 @@ export async function buildVisionContent(text: string, images: File[]): Promise<
 /** System prompt per task type */
 const SYSTEM_PROMPTS: Record<string, string> = {
   vision:
-    'You are a highly intelligent multimodal AI assistant. ' +
-    'You can see, analyze, and describe images in detail. ' +
-    'When the user sends an image, examine it carefully and answer accurately. ' +
-    'Be concise, friendly, and professional.',
+    'You are a highly intelligent multimodal AI assistant powered by Gemini Flash 1.5. ' +
+    'You can SEE, analyze, describe, and answer questions about images in great detail. ' +
+    'IMPORTANT: You cannot edit, modify, or generate new images — you are a language model. ' +
+    'If the user asks you to edit an image (e.g., "change the background to red"), politely explain this limitation and suggest free tools they can use (e.g., Canva, remove.bg, Adobe Express). ' +
+    'Always describe what you see in the image first, then answer the user\'s question. ' +
+    'Be concise, accurate, and helpful.',
   code:
     'You are an expert software engineer and code assistant. ' +
     'Write clean, well-commented, production-ready code. ' +
