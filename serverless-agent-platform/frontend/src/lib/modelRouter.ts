@@ -17,21 +17,21 @@ export interface ModelProfile {
   speed: 'fast' | 'medium' | 'slow';
 }
 
-/** All available free-tier models on OpenRouter (verified working 2025) */
+/** All available free-tier models on OpenRouter (verified working 2026) */
 export const MODEL_CATALOG: Record<TaskType, ModelProfile> = {
   vision: {
-    id: 'meta-llama/llama-3.2-11b-vision-instruct:free',
-    displayName: 'LLaMA 3.2 Vision 11B',
+    id: 'nvidia/nemotron-nano-12b-v2-vl:free',
+    displayName: 'Nemotron Nano 12B VL',
     taskType: 'vision',
     emoji: '👁️',
     tagline: 'Multimodal · Image Understanding',
-    reason: 'Image detected — switching to a vision-capable model that can see and describe images.',
-    contextWindow: '128K',
-    speed: 'medium',
+    reason: 'Image detected — Nemotron Nano 12B VL is a reliable free vision model and can see, describe, and analyze images.',
+    contextWindow: '4K',
+    speed: 'fast',
   },
   code: {
-    id: 'qwen/qwen2.5-coder-32b-instruct:free',
-    displayName: 'Qwen 2.5 Coder 32B',
+    id: 'cohere/north-mini-code:free',
+    displayName: 'Cohere North Mini Code',
     taskType: 'code',
     emoji: '💻',
     tagline: 'Code Generation · Debugging · Review',
@@ -40,8 +40,8 @@ export const MODEL_CATALOG: Record<TaskType, ModelProfile> = {
     speed: 'medium',
   },
   reasoning: {
-    id: 'deepseek/deepseek-r1-0528-qwen3-8b:free',
-    displayName: 'DeepSeek R1 (Thinking)',
+    id: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
+    displayName: 'Nemotron 3 Reasoning 30B',
     taskType: 'reasoning',
     emoji: '🧠',
     tagline: 'Chain-of-Thought · Deep Analysis',
@@ -50,26 +50,27 @@ export const MODEL_CATALOG: Record<TaskType, ModelProfile> = {
     speed: 'slow',
   },
   creative: {
-    id: 'mistralai/mistral-7b-instruct:free',
-    displayName: 'Mistral 7B Instruct',
+    id: 'poolside/laguna-m.1:free',
+    displayName: 'Laguna M.1',
     taskType: 'creative',
     emoji: '✨',
     tagline: 'Creative Writing · Stories · Marketing',
-    reason: 'Creative task detected — Mistral excels at expressive, fluent prose generation.',
+    reason: 'Creative task detected — Laguna excels at expressive, fluent prose generation.',
     contextWindow: '32K',
     speed: 'fast',
   },
   chat: {
-    id: 'google/gemma-3-27b-it:free',
-    displayName: 'Gemma 3 27B',
+    id: 'google/gemma-4-31b-it:free',
+    displayName: 'Gemma 4 31B',
     taskType: 'chat',
     emoji: '💬',
     tagline: 'General Assistant · Q&A · Conversation',
-    reason: 'General conversation — Gemma 3 27B is Google\'s best free general-purpose model.',
+    reason: 'General conversation — Gemma 4 31B is a highly capable general-purpose model.',
     contextWindow: '128K',
     speed: 'medium',
   },
 };
+
 
 /** Keyword patterns for each task type (order matters — first match wins) */
 const TASK_PATTERNS: Array<{ type: TaskType; pattern: RegExp; label: string }> = [
