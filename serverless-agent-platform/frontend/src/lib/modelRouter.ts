@@ -135,7 +135,20 @@ export async function routeModel(
 
   const signals: string[] = [];
 
-  // 1. Vision wins immediately if images are present
+  // 1. Image generation/editing overrides standard vision
+  const genPattern = TASK_PATTERNS.find(p => p.type === 'image_generation')!;
+  if (genPattern.pattern.test(message)) {
+    signals.push(`🔍 ${genPattern.label}`);
+    signals.push(`🔀 Routing to ${MODEL_CATALOG.image_generation.displayName}`);
+    return {
+      taskType: 'image_generation',
+      model: MODEL_CATALOG.image_generation,
+      signals,
+      durationMs: Date.now() - start,
+    };
+  }
+
+  // 2. Vision wins if images are present (and it wasn't a generation request)
   if (hasImages) {
     signals.push('🖼️ Image attachment detected');
     signals.push('🔀 Routing to multimodal vision model');
@@ -147,8 +160,9 @@ export async function routeModel(
     };
   }
 
-  // 2. Check keyword patterns in order
+  // 3. Check remaining keyword patterns in order
   for (const { type, pattern, label } of TASK_PATTERNS) {
+    if (type === 'image_generation') continue; // already checked
     if (pattern.test(message)) {
       signals.push(`🔍 ${label}`);
       signals.push(`🔀 Routing to ${MODEL_CATALOG[type].displayName}`);
@@ -161,7 +175,7 @@ export async function routeModel(
     }
   }
 
-  // 3. Default: general chat
+  // 4. Default: general chat
   signals.push('💬 General conversation detected');
   signals.push('🔀 Using best general-purpose model');
   return {
