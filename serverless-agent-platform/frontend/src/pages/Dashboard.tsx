@@ -3,31 +3,7 @@ import { Activity, CheckCircle2, Clock, Bot, XCircle, Database, Zap, GitBranch, 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { supabase } from '../lib/supabase';
 
-// Dummy data for charts
-const timelineData = [
-  { day: '14d ago', success: 40, errors: 2 },
-  { day: '12d ago', success: 45, errors: 3 },
-  { day: '10d ago', success: 42, errors: 1 },
-  { day: '8d ago', success: 55, errors: 4 },
-  { day: '6d ago', success: 48, errors: 0 },
-  { day: '4d ago', success: 65, errors: 2 },
-  { day: '2d ago', success: 75, errors: 1 },
-  { day: 'Today', success: 85, errors: 2 },
-];
 
-const distributionData = [
-  { name: 'General Assistant', value: 192, color: '#0663C1' },
-  { name: 'Docs & Reports', value: 45, color: '#7C3AED' },
-  { name: 'Job Application', value: 10, color: '#D97F06' },
-];
-
-const recentRuns = [
-  { id: '#247', task: 'Write Python API for user auth', agent: 'Gemini 1.5', duration: '2.4s', status: 'DONE' },
-  { id: '#246', task: 'Optimize React dashboard render', agent: 'Groq Llama', duration: '0.8s', status: 'DONE' },
-  { id: '#245', task: 'Process 10GB log file anomalies', agent: 'HF Mixtral', duration: '45s', status: 'RUNNING' },
-  { id: '#244', task: 'Scrape competitor pricing page', agent: 'Gemini Pro', duration: '12.1s', status: 'FAILED' },
-  { id: '#243', task: 'Generate SQL schema for billing', agent: 'HF Coder', duration: '3.2s', status: 'DONE' },
-];
 
 export function Dashboard() {
   const [metrics, setMetrics] = useState({
@@ -111,20 +87,8 @@ export function Dashboard() {
               <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-accent-red"></div>Errors</div>
             </div>
           </div>
-          <div className="flex-1 min-h-[250px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={timelineData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#30363D" vertical={false} />
-                <XAxis dataKey="day" stroke="#8B949E" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#8B949E" fontSize={12} tickLine={false} axisLine={false} />
-                <RechartsTooltip 
-                  contentStyle={{ backgroundColor: '#1C2128', borderColor: '#30363D', borderRadius: '8px', fontSize: '12px', color: '#E6EDF3' }}
-                  itemStyle={{ color: '#E6EDF3' }}
-                />
-                <Line type="monotone" dataKey="success" stroke="#16A34A" strokeWidth={2} dot={{ r: 3, fill: '#16A34A' }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="errors" stroke="#DC2626" strokeWidth={2} strokeDasharray="5 5" dot={false} activeDot={{ r: 5 }} />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="flex-1 flex items-center justify-center min-h-[250px] w-full text-text-muted text-sm border-2 border-dashed border-border rounded-lg">
+            No activity data available. Run a task to see metrics.
           </div>
         </div>
 
@@ -135,33 +99,9 @@ export function Dashboard() {
             <MoreHorizontal className="w-4 h-4 text-text-muted cursor-pointer hover:text-text-primary" />
           </div>
           <div className="flex-1 flex flex-col items-center justify-center relative min-h-[200px]">
-            <ResponsiveContainer width="100%" height={160}>
-              <PieChart>
-                <Pie data={distributionData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} stroke="none" dataKey="value">
-                  {distributionData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-2">
-              <span className="text-xl font-bold text-text-primary">247</span>
-              <span className="text-[10px] text-text-muted font-bold tracking-wider">TOTAL</span>
+            <div className="text-sm text-text-muted text-center max-w-[150px]">
+              No tasks distributed yet.
             </div>
-          </div>
-          <div className="space-y-3 mt-4">
-            {distributionData.map(item => (
-              <div key={item.name} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: item.color }}></div>
-                  <span className="text-text-secondary">{item.name}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-text-primary font-medium">{item.value}</span>
-                  <span className="text-text-muted font-bold w-8 text-right">{Math.round((item.value/247)*100)}%</span>
-                </div>
-              </div>
-            ))}
           </div>
         </div>
 
@@ -190,20 +130,28 @@ export function Dashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border text-text-secondary">
-                {(liveRuns.length > 0 ? liveRuns : recentRuns).map((run) => (
-                  <tr key={run.id} className="hover:bg-background-secondary transition-colors group">
-                    <td className="px-5 py-3.5 font-medium text-text-muted group-hover:text-text-secondary">{run.id}</td>
-                    <td className="px-5 py-3.5 font-medium text-text-primary">{run.task}</td>
-                    <td className="px-5 py-3.5 flex items-center gap-2">
-                      <div className="w-4 h-4 rounded bg-accent-blue bg-opacity-20 flex items-center justify-center"><Bot className="w-2.5 h-2.5 text-accent-blue"/></div>
-                      {run.agent}
-                    </td>
-                    <td className="px-5 py-3.5">{run.duration}</td>
-                    <td className="px-5 py-3.5 text-right">
-                      <StatusBadge status={run.status} />
+                {liveRuns.length > 0 ? (
+                  liveRuns.map((run) => (
+                    <tr key={run.id} className="hover:bg-background-secondary transition-colors group">
+                      <td className="px-5 py-3.5 font-medium text-text-muted group-hover:text-text-secondary">{run.id}</td>
+                      <td className="px-5 py-3.5 font-medium text-text-primary">{run.task}</td>
+                      <td className="px-5 py-3.5 flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-accent-blue bg-opacity-20 flex items-center justify-center"><Bot className="w-2.5 h-2.5 text-accent-blue"/></div>
+                        {run.agent}
+                      </td>
+                      <td className="px-5 py-3.5">{run.duration}</td>
+                      <td className="px-5 py-3.5 text-right">
+                        <StatusBadge status={run.status} />
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-8 text-center text-text-muted text-sm">
+                      No recent runs found. Dispatch a task to get started!
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>

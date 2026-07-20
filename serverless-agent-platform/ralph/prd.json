@@ -1,0 +1,35 @@
+{
+  "project": "Serverless Agent Platform",
+  "branchName": "ralph/fix-dashboard-dummy-data",
+  "description": "Remove confusing dummy data from Dashboard and create a script to seed the agents table.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Create database seed script",
+      "description": "As a developer, I need a SQL script to populate the agents table so it is not empty.",
+      "acceptanceCriteria": [
+        "Create a file named `seed_agents.sql` in the root directory",
+        "The script should INSERT the 3 core agents ('agent_general', 'agent_docs', 'agent_vision') into the agents table",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Remove dummy data from Dashboard",
+      "description": "As a user, I want the dashboard to show my actual data instead of hardcoded dummy arrays.",
+      "acceptanceCriteria": [
+        "In `frontend/src/pages/Dashboard.tsx`, remove the hardcoded `timelineData`, `distributionData`, and `recentRuns` arrays",
+        "Update the Recharts and Table components to handle an empty state (0 runs) gracefully instead of crashing",
+        "Ensure the Task Distribution pie chart uses actual data from `liveRuns` if available, or renders an empty/placeholder state",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
