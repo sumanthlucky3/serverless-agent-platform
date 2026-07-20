@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Bot, Code2, BarChart, Paperclip, Link as LinkIcon, Send, ArrowLeft, MoreHorizontal, GitBranch, Database, FileText } from 'lucide-react';
+import {
+  Bot, Paperclip, Send, ArrowLeft, GitBranch, Database,
+  FileText, BarChart2, Zap, Image as ImageIcon, X,
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { supabase } from '../lib/supabase';
-import { streamChat } from '../lib/llm';
+import { streamChat, buildVisionContent, type ChatMessage, type ContentPart } from '../lib/llm';
 
 interface Agent {
   id: string;
@@ -15,6 +18,23 @@ interface Agent {
   run_count: number;
 }
 
+// A message as stored in UI — content can be string OR parts array (for images)
+interface UIMessage {
+  role: 'user' | 'assistant';
+  content: string | ContentPart[];
+  /** pre-built object URLs for image thumbnails so we can revoke them later */
+  previewUrls?: string[];
+}
+
+const ICON_MAP: Record<string, any> = {
+  'bot':       Bot,
+  'file-text': FileText,
+  'briefcase': BarChart2,
+};
+
+/* =============================================
+   AGENT HUB — card grid
+   ============================================= */
 export function Agents() {
   const { agentId } = useParams();
   const navigate = useNavigate();
@@ -22,12 +42,11 @@ export function Agents() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchAgents() {
-      const { data, error } = await supabase.from('agents').select('*').order('created_at', { ascending: true });
-      if (data) setAgents(data);
-      setLoading(false);
-    }
-    fetchAgents();
+    supabase
+      .from('agents')
+      .select('*')
+      .order('created_at', { ascending: true })
+      .then(({ data }) => { if (data) setAgents(data); setLoading(false); });
   }, []);
 
   if (agentId) {
@@ -35,443 +54,572 @@ export function Agents() {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary">Agent Hub</h1>
-        <p className="text-text-secondary mt-1">Select an agent to assign your next task.</p>
+    <div className="page-enter" style={{ paddingBottom: 32 }}>
+      <div style={{ marginBottom: 28 }}>
+        <h1 className="page-title">
+          Agent <span className="gradient-text">Hub</span>
+        </h1>
+        <p className="page-subtitle">Select an agent to begin your next mission.</p>
       </div>
 
       {loading ? (
-        <div className="flex justify-center items-center h-32">
-          <div className="w-6 h-6 border-2 border-accent-blue border-t-transparent rounded-full animate-spin"></div>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200 }}>
+          <div style={{
+            width: 36, height: 36, border: '2px solid transparent',
+            borderTopColor: 'var(--cyan)', borderRadius: '50%',
+            animation: 'spin 0.7s linear infinite',
+          }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       ) : (
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {agents.map((agent) => {
-          let IconComponent = Bot;
-          if (agent.icon === 'file-text') IconComponent = FileText;
-          if (agent.icon === 'briefcase') IconComponent = BarChart;
-          
-          const isActive = agent.status === 'active';
-
-          return (
-            <div 
-              key={agent.id}
-              className={`bg-background-card border border-border rounded-lg p-6 flex flex-col transition-all ${
-                isActive ? `hover:border-[${agent.color}] hover:shadow-lg group` : 'opacity-75'
-              }`}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div 
-                  className="w-12 h-12 rounded-full flex items-center justify-center"
-                  style={{ backgroundColor: `${agent.color}1A` }} // 1A is ~10% opacity
-                >
-                  <IconComponent className="w-6 h-6" style={{ color: agent.color }} />
+        <div className="agent-grid">
+          {agents.map((agent) => {
+            const Icon = ICON_MAP[agent.icon] || Bot;
+            const isActive = agent.status === 'active';
+            const colorGlow = agent.color + '40';
+            return (
+              <div
+                key={agent.id}
+                className="glass-card agent-card"
+                style={{
+                  '--agent-color':      agent.color,
+                  '--agent-color-glow': colorGlow,
+                  display: 'flex', flexDirection: 'column',
+                  opacity: isActive ? 1 : 0.65,
+                } as React.CSSProperties}
+                onClick={() => isActive && navigate(`/agents/${agent.id}`)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
+                  <div className="agent-icon-wrap" style={{
+                    background: agent.color + '18',
+                    border: `1px solid ${agent.color}30`,
+                    boxShadow: `0 0 16px ${agent.color}20`,
+                  }}>
+                    <Icon size={24} color={agent.color} />
+                  </div>
+                  <span className={isActive ? 'badge badge-active' : 'badge badge-soon'}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} />
+                    {isActive ? 'Active' : 'Soon'}
+                  </span>
                 </div>
-                
-                {isActive ? (
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-accent-green bg-opacity-10 border border-accent-green border-opacity-20 text-[10px] font-bold text-accent-green uppercase tracking-wider">
-                    <div className="w-1.5 h-1.5 rounded-full bg-accent-green"></div>
-                    Active
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-text-muted bg-opacity-20 border border-text-muted border-opacity-20 text-[10px] font-bold text-text-secondary uppercase tracking-wider">
-                    <div className="w-1.5 h-1.5 rounded-full bg-text-muted"></div>
-                    Coming Soon
-                  </div>
-                )}
+                <h2 className="agent-name">{agent.name}</h2>
+                <p className="agent-desc">{agent.description}</p>
+                <div className="agent-footer">
+                  <span className="agent-runs">{agent.run_count} runs</span>
+                  {isActive ? (
+                    <button className="btn-primary" onClick={(e) => { e.stopPropagation(); navigate(`/agents/${agent.id}`); }}>
+                      Run Agent <span>→</span>
+                    </button>
+                  ) : (
+                    <button className="btn-ghost">Notify Me</button>
+                  )}
+                </div>
               </div>
-              
-              <h2 className="text-lg font-bold text-text-primary mb-2 transition-colors" style={isActive ? { /* hover handled by group in css usually, let's keep it simple */ } : {}}>
-                {agent.name}
-              </h2>
-              
-              <p className="text-sm text-text-secondary flex-1 mb-6 leading-relaxed">
-                {agent.description}
-              </p>
-              
-              <div className="flex items-center justify-between mt-auto">
-                <span className="text-xs text-text-muted font-medium">{agent.run_count} runs</span>
-                {isActive ? (
-                  <button 
-                    onClick={() => navigate(`/agents/${agent.id}`)}
-                    className="bg-accent-blue hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold transition-colors flex items-center gap-2"
-                  >
-                    Run Agent &rarr;
-                  </button>
-                ) : (
-                  <button className="bg-background-secondary text-text-primary border border-border px-4 py-2 rounded-md text-sm font-semibold hover:bg-border transition-colors">
-                    Notify Me
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
 }
 
-function AgentWorkspace({ agentId, onBack }: { agentId: string, onBack: () => void }) {
-  const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<{role: string, content: string}[]>([
-    { role: 'assistant', content: 'Hello! I am ready to help. What would you like to work on?' }
+/* =============================================
+   AGENT WORKSPACE — professional chat UI
+   ============================================= */
+function AgentWorkspace({ agentId, onBack }: { agentId: string; onBack: () => void }) {
+  const [input, setInput]                   = useState('');
+  const [messages, setMessages]             = useState<UIMessage[]>([
+    { role: 'assistant', content: 'Hello! I\'m ready to help. You can send text, attach images, or ask me anything.' },
   ]);
-  const [agentName, setAgentName] = useState('General Assistant');
-  const [isTyping, setIsTyping] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [agentName, setAgentName]           = useState('General Assistant');
+  const [agentColor, setAgentColor]         = useState('var(--cyan)');
+  const [isTyping, setIsTyping]             = useState(false);
+  const [sessionId, setSessionId]           = useState<string | null>(null);
+  const [attachedFiles, setAttachedFiles]   = useState<File[]>([]);
+  // object-URL previews for attached images (revoke when file is removed)
+  const [attachedPreviews, setAttachedPreviews] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef   = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    async function loadWorkspace() {
-      // Fetch agent name
-      const { data: agentData } = await supabase.from('agents').select('name').eq('id', agentId).single();
-      if (agentData) setAgentName(agentData.name);
+    async function load() {
+      const { data: agentData } = await supabase
+        .from('agents').select('name, color').eq('id', agentId).single();
+      if (agentData) { setAgentName(agentData.name); setAgentColor(agentData.color); }
 
-      // Fetch recent session
       const { data: sessions } = await supabase
-        .from('agent_sessions')
-        .select('id')
-        .eq('agent_id', agentId)
-        .order('started_at', { ascending: false })
-        .limit(1);
+        .from('agent_sessions').select('id').eq('agent_id', agentId)
+        .order('started_at', { ascending: false }).limit(1);
 
       if (sessions && sessions.length > 0) {
         const sid = sessions[0].id;
         setSessionId(sid);
-        
-        // Fetch messages for this session
         const { data: msgs } = await supabase
-          .from('agent_messages')
-          .select('role, content')
-          .eq('session_id', sid)
-          .order('created_at', { ascending: true });
-          
+          .from('agent_messages').select('role, content')
+          .eq('session_id', sid).order('created_at', { ascending: true });
         if (msgs && msgs.length > 0) {
-          setMessages(msgs);
+          setMessages(msgs.map(m => ({ ...m, role: m.role as 'user' | 'assistant' })));
         }
       }
     }
-    loadWorkspace();
+    load();
+    // Revoke object URLs on unmount
+    return () => { attachedPreviews.forEach(url => URL.revokeObjectURL(url)); };
   }, [agentId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)]);
-    }
+  /* ---------- File handling ---------- */
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const newFiles = Array.from(e.target.files);
+    const newPreviews = newFiles.map(f =>
+      f.type.startsWith('image/') ? URL.createObjectURL(f) : ''
+    );
+    setAttachedFiles(prev => [...prev, ...newFiles]);
+    setAttachedPreviews(prev => [...prev, ...newPreviews]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const removeFile = (index: number) => {
-    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  const removeFile = (idx: number) => {
+    // Revoke the object URL to free memory
+    if (attachedPreviews[idx]) URL.revokeObjectURL(attachedPreviews[idx]);
+    setAttachedFiles(prev    => prev.filter((_, i) => i !== idx));
+    setAttachedPreviews(prev => prev.filter((_, i) => i !== idx));
   };
 
+  /* ---------- Send ---------- */
   const handleSend = async () => {
-    if (!input.trim() || isTyping) return;
-    
-    const userMsg = input.trim();
-    setInput('');
-    const currentMessages = [...messages, { role: 'user', content: userMsg }];
+    if ((!input.trim() && attachedFiles.length === 0) || isTyping) return;
+
+    const textInput    = input.trim();
+    const imageFiles   = attachedFiles.filter(f => f.type.startsWith('image/'));
+    const previewSnap  = [...attachedPreviews]; // snapshot for bubble rendering
+
+    // Build the UI message for the user bubble
+    const userMsg: UIMessage = imageFiles.length > 0
+      ? { role: 'user', content: textInput || ' ', previewUrls: previewSnap.filter(Boolean) }
+      : { role: 'user', content: textInput };
+
+    const currentMessages = [...messages, userMsg];
     setMessages(currentMessages);
-    
+    setInput('');
+    setAttachedFiles([]);
+    setAttachedPreviews([]);
+
     setIsTyping(true);
     setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
-    
+
     let currentSessionId = sessionId;
-    
+
     try {
-      // Create session if it doesn't exist
       if (!currentSessionId) {
-        const { data: newSession, error: sessionErr } = await supabase
+        const { data: newSession } = await supabase
           .from('agent_sessions')
-          .insert({ agent_id: agentId, title: 'New Conversation', status: 'active' })
-          .select('id')
-          .single();
-          
-        if (sessionErr) {
-          console.error("Supabase Error (Create Session):", sessionErr);
-        }
-          
-        if (newSession) {
-          currentSessionId = newSession.id;
-          setSessionId(currentSessionId);
-        }
+          .insert({ agent_id: agentId, title: textInput.slice(0, 60) || 'Image Task', status: 'active' })
+          .select('id').single();
+        if (newSession) { currentSessionId = newSession.id; setSessionId(currentSessionId); }
       }
 
-      // Save user message
+      // Persist user message as plain text
       if (currentSessionId) {
-        const { error: msgErr } = await supabase.from('agent_messages').insert({
-          session_id: currentSessionId,
-          role: 'user',
-          content: userMsg
+        await supabase.from('agent_messages').insert({
+          session_id: currentSessionId, role: 'user',
+          content: textInput || '[image attached]',
         });
-        if (msgErr) console.error("Supabase Error (Insert User Msg):", msgErr);
       }
 
-      // Stream the response directly from LLM API
-      const stream = streamChat(currentMessages);
-      setIsTyping(false); // Hide typing bubbles once we start streaming
-      
+      // Build the API message history — convert images to base64 for vision API
+      const apiHistory: ChatMessage[] = await Promise.all(
+        currentMessages.map(async (m): Promise<ChatMessage> => {
+          // If this is the last user message and we have images, build vision content
+          if (m === userMsg && imageFiles.length > 0) {
+            const parts = await buildVisionContent(textInput, imageFiles);
+            return { role: 'user', content: parts };
+          }
+          // For older messages or text-only, just pass content as a string
+          const textContent = typeof m.content === 'string'
+            ? m.content
+            : (m.content as ContentPart[]).find(p => p.type === 'text')?.text ?? '';
+          return { role: m.role, content: textContent };
+        })
+      );
+
+      const stream = streamChat(apiHistory);
+      setIsTyping(false);
       let fullResponse = '';
       for await (const chunk of stream) {
         fullResponse += chunk;
         setMessages(prev => {
           const updated = [...prev];
-          updated[updated.length - 1].content = fullResponse;
+          updated[updated.length - 1] = { role: 'assistant', content: fullResponse };
           return updated;
         });
       }
-      
-      // Save assistant message
+
       if (currentSessionId) {
-        const { error: astErr } = await supabase.from('agent_messages').insert({
-          session_id: currentSessionId,
-          role: 'assistant',
-          content: fullResponse
+        await supabase.from('agent_messages').insert({
+          session_id: currentSessionId, role: 'assistant', content: fullResponse,
         });
-        if (astErr) console.error("Supabase Error (Insert Assistant Msg):", astErr);
       }
     } catch (err: any) {
       setIsTyping(false);
       setMessages(prev => {
         const updated = [...prev];
-        updated[updated.length - 1].content = `**Error:** ${err.message}`;
+        updated[updated.length - 1] = { role: 'assistant', content: `**Error:** ${err.message}` };
         return updated;
       });
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
+
+  /* ---------- Render ---------- */
+  const getTextContent = (msg: UIMessage) =>
+    typeof msg.content === 'string'
+      ? msg.content
+      : (msg.content as ContentPart[]).find(p => p.type === 'text')?.text ?? '';
+
   return (
-    <div className="fixed inset-0 bg-background-primary z-50 flex animate-in fade-in duration-300">
-      
-      {/* LEFT SIDEBAR - AGENT INFO */}
-      <div className="w-64 border-r border-border bg-background-secondary flex flex-col">
-        <div className="p-6 border-b border-border flex flex-col items-center text-center">
-          <div className="w-20 h-20 rounded-full bg-accent-blue bg-opacity-10 flex items-center justify-center mb-4 border border-accent-blue border-opacity-20">
-            <Bot className="w-10 h-10 text-accent-blue" />
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 200,
+      display: 'flex',
+      background: 'rgba(3,4,10,0.95)',
+      backdropFilter: 'blur(24px)',
+      animation: 'fadeUp 0.3s ease forwards',
+    }}>
+
+      {/* ── LEFT SIDEBAR ── */}
+      <div style={{
+        width: 230, borderRight: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column',
+        background: 'rgba(8,11,20,0.7)', backdropFilter: 'blur(20px)', flexShrink: 0,
+      }}>
+        <div style={{ padding: '28px 20px 20px', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%', margin: '0 auto 12px',
+            background: agentColor + '18', border: `2px solid ${agentColor}40`,
+            boxShadow: `0 0 24px ${agentColor}30`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Bot size={26} color={agentColor} />
           </div>
-          <h2 className="font-bold text-lg text-text-primary">{agentName}</h2>
-          <div className="flex items-center gap-1.5 mt-2">
-            <div className="w-2 h-2 rounded-full bg-accent-green"></div>
-            <span className="text-xs font-semibold text-accent-green tracking-wide uppercase">Active</span>
+          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{agentName}</div>
+          <span className="badge badge-active" style={{ marginTop: 8, display: 'inline-flex' }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'currentColor' }} />
+            Online · Vision
+          </span>
+        </div>
+
+        <div style={{ padding: 16, flex: 1, overflowY: 'auto' }}>
+          <div className="section-label">Connectors</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+            <ConnectorRow icon={GitBranch} name="GitHub"   connected />
+            <ConnectorRow icon={Database}  name="Supabase" connected />
+            <ConnectorRow icon={Zap}       name="Gemini 2.0" connected />
           </div>
         </div>
 
-        <div className="p-4 flex-1 overflow-y-auto">
-          <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3">Connectors</h3>
-          <div className="space-y-2 mb-8">
-            <ConnectorItem icon={GitBranch} name="GitHub" connected />
-            <ConnectorItem icon={Database} name="Supabase" connected />
-            <ConnectorItem icon={MoreHorizontal} name="Groq API" connected />
-            <ConnectorItem icon={MoreHorizontal} name="Notion" />
-            <ConnectorItem icon={MoreHorizontal} name="Google Drive" />
-            <ConnectorItem icon={MoreHorizontal} name="Slack" />
-          </div>
-
-          <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3">Recent Sessions</h3>
-          <div className="space-y-1">
-            <SessionItem title="FastAPI Authentication" time="2 hours ago" />
-            <SessionItem title="Supabase Schema Design" time="Yesterday" />
-            <SessionItem title="React Native Setup" time="Oct 24, 2025" />
-          </div>
-        </div>
-
-        <div className="p-4 border-t border-border">
-          <button 
-            onClick={onBack}
-            className="flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors text-sm font-medium w-full"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Agent Hub
+        <div style={{ padding: 16, borderTop: '1px solid var(--border)' }}>
+          <button onClick={onBack} className="btn-ghost" style={{ width: '100%', justifyContent: 'center' }}>
+            <ArrowLeft size={14} /> Back
           </button>
         </div>
       </div>
 
-      {/* CENTER - CHAT AREA */}
-      <div className="flex-1 flex flex-col bg-[#0D1117] relative">
-        <div className="h-16 border-b border-border flex items-center justify-between px-6 bg-background-primary shrink-0">
-          <h2 className="font-semibold text-text-primary">{agentName}</h2>
-          <button className="bg-background-secondary border border-border text-text-primary px-3 py-1.5 rounded-md text-sm font-medium hover:bg-border transition-colors">
+      {/* ── CENTER CHAT ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+
+        {/* Header */}
+        <div style={{
+          height: 58, padding: '0 24px',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: 'rgba(8,11,20,0.6)', backdropFilter: 'blur(12px)', flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{agentName}</span>
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>gemini-2.0-flash · vision</span>
+          </div>
+          <button className="btn-ghost" style={{ fontSize: '0.75rem', padding: '6px 12px' }}
+            onClick={() => {
+              setMessages([{ role: 'assistant', content: 'New session started! How can I help?' }]);
+              setSessionId(null);
+            }}>
             New Session +
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Messages */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 22 }}>
           {messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'gap-4 max-w-3xl'}`}>
+            <div key={i} style={{
+              display: 'flex',
+              justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+              gap: 12, alignItems: 'flex-end',
+            }}>
               {msg.role === 'assistant' && (
-                <div className="w-8 h-8 rounded-full bg-accent-blue bg-opacity-20 flex items-center justify-center shrink-0">
-                  <Bot className="w-5 h-5 text-accent-blue" />
+                <div style={{
+                  width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                  background: agentColor + '18', border: `1px solid ${agentColor}30`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Bot size={15} color={agentColor} />
                 </div>
               )}
-              <div className={`${
-                msg.role === 'user' 
-                  ? 'bg-accent-blue text-white px-5 py-3 rounded-2xl rounded-tr-sm max-w-xl text-sm shadow-sm'
-                  : 'bg-background-card border border-border px-5 py-4 rounded-2xl rounded-tl-sm text-sm text-text-primary flex-1 shadow-sm leading-relaxed overflow-hidden'
-              }`}>
-                {msg.role === 'user' ? (
-                  msg.content
-                ) : (
-                  <div className="prose prose-invert max-w-none text-sm prose-p:leading-relaxed prose-pre:bg-[#0D1117] prose-pre:border prose-pre:border-border">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+
+              <div style={{ maxWidth: msg.role === 'user' ? 560 : 720 }}>
+                {/* Image previews in the user bubble */}
+                {msg.role === 'user' && msg.previewUrls && msg.previewUrls.length > 0 && (
+                  <div style={{
+                    display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8,
+                    justifyContent: 'flex-end',
+                  }}>
+                    {msg.previewUrls.map((url, pi) => (
+                      <img
+                        key={pi} src={url} alt="attachment"
+                        style={{
+                          maxHeight: 220, maxWidth: 320, borderRadius: 12,
+                          border: `2px solid ${agentColor}40`,
+                          objectFit: 'cover',
+                          boxShadow: `0 4px 20px ${agentColor}20`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Message bubble */}
+                {(getTextContent(msg) || msg.role === 'assistant') && (
+                  <div style={{
+                    padding: '12px 18px',
+                    borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '4px 18px 18px 18px',
+                    background: msg.role === 'user'
+                      ? `linear-gradient(135deg, ${agentColor}, var(--indigo))`
+                      : 'rgba(13,18,38,0.85)',
+                    border: msg.role === 'user' ? 'none' : '1px solid var(--border)',
+                    backdropFilter: 'blur(12px)',
+                    fontSize: '0.875rem',
+                    color: 'var(--text-primary)',
+                    lineHeight: 1.7,
+                  }}>
+                    {msg.role === 'user' ? (
+                      getTextContent(msg)
+                    ) : (
+                      <div className="prose prose-invert prose-sm max-w-none">
+                        <ReactMarkdown>{getTextContent(msg)}</ReactMarkdown>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             </div>
           ))}
+
           {isTyping && (
-             <div className="flex gap-4 max-w-3xl">
-                <div className="w-8 h-8 rounded-full bg-accent-blue bg-opacity-20 flex items-center justify-center shrink-0">
-                  <Bot className="w-5 h-5 text-accent-blue" />
-                </div>
-                <div className="bg-background-card border border-border px-5 py-4 rounded-2xl rounded-tl-sm text-sm text-text-primary shadow-sm flex gap-1 items-center h-[52px]">
-                   <div className="w-2 h-2 bg-text-muted rounded-full animate-bounce"></div>
-                   <div className="w-2 h-2 bg-text-muted rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                   <div className="w-2 h-2 bg-text-muted rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-                </div>
-             </div>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                background: agentColor + '18', border: `1px solid ${agentColor}30`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Bot size={15} color={agentColor} />
+              </div>
+              <div style={{
+                padding: '14px 18px', borderRadius: '4px 18px 18px 18px',
+                background: 'rgba(13,18,38,0.85)', border: '1px solid var(--border)',
+              }}>
+                <div className="typing-wave"><span /><span /><span /></div>
+              </div>
+            </div>
           )}
           <div ref={messagesEndRef} />
         </div>
 
-        {/* INPUT BAR */}
-        <div className="p-6 bg-background-primary border-t border-border shrink-0">
-          <div className="max-w-4xl mx-auto">
-            <div className="relative flex items-center bg-background-card border border-border rounded-xl focus-within:border-text-muted transition-colors shadow-sm">
-              <div className="flex items-center px-3 gap-1">
-                <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple />
-                <button onClick={() => fileInputRef.current?.click()} className="p-2 text-text-muted hover:text-text-primary transition-colors rounded-lg hover:bg-background-secondary" title="Attach file">
-                  <Paperclip className="w-5 h-5" />
-                </button>
-                <button className="p-2 text-text-muted hover:text-text-primary transition-colors rounded-lg hover:bg-background-secondary" title="Add reference link">
-                  <LinkIcon className="w-5 h-5" />
-                </button>
-              </div>
-              <input 
-                type="text" 
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={`Message ${agentName}...`}
-                className="flex-1 bg-transparent py-4 outline-none text-sm text-text-primary placeholder:text-text-muted"
-                disabled={isTyping}
-              />
-              <div className="px-3">
-                <button 
-                  onClick={handleSend}
-                  disabled={!input.trim() || isTyping}
-                  className="bg-accent-blue text-white p-2.5 rounded-lg hover:bg-blue-600 transition-colors shadow-sm disabled:opacity-50"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            <div className="flex gap-2 mt-3 ml-2">
-              <span className="text-[11px] font-medium text-text-muted bg-background-card px-2 py-1 rounded-md border border-border">GitHub connected</span>
-              <span className="text-[11px] font-medium text-text-muted bg-background-card px-2 py-1 rounded-md border border-border">Supabase connected</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* RIGHT SIDEBAR - CONTEXT */}
-      <div className="w-72 border-l border-border bg-background-primary flex flex-col text-sm">
-        <div className="p-5 border-b border-border">
-          <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-4">Attached Files</h3>
-          {attachedFiles.length === 0 ? (
-             <div className="text-sm text-text-muted mb-3 italic">No files attached.</div>
-          ) : (
-            attachedFiles.map((file, idx) => (
-              <div key={idx} className="bg-background-secondary border border-dashed border-border rounded-lg p-3 flex items-center justify-between group hover:border-text-muted transition-colors mb-3">
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <div className="w-8 h-8 bg-background-card rounded flex items-center justify-center shrink-0">
-                    <FileText className="w-4 h-4 text-text-secondary" />
+        {/* ── INPUT BAR ── */}
+        <div style={{
+          padding: '12px 24px 18px',
+          borderTop: '1px solid var(--border)',
+          background: 'rgba(8,11,20,0.7)',
+          backdropFilter: 'blur(12px)',
+          flexShrink: 0,
+        }}>
+          {/* Attached file chips with remove button */}
+          {attachedFiles.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              {attachedFiles.map((file, idx) => {
+                const isImage   = file.type.startsWith('image/');
+                const previewUrl = attachedPreviews[idx];
+                return (
+                  <div key={idx} style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: 'rgba(99,102,241,0.1)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 20, padding: '4px 6px 4px 4px',
+                    fontSize: '0.75rem', color: 'var(--text-secondary)',
+                  }}>
+                    {isImage && previewUrl ? (
+                      <img src={previewUrl} alt={file.name} style={{
+                        width: 26, height: 26, borderRadius: 14,
+                        objectFit: 'cover', border: '1px solid var(--border)',
+                      }} />
+                    ) : (
+                      <div style={{
+                        width: 26, height: 26, borderRadius: 14,
+                        background: 'rgba(99,102,241,0.15)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <FileText size={13} color="var(--text-muted)" />
+                      </div>
+                    )}
+                    <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {file.name}
+                    </span>
+                    {/* ── REMOVE BUTTON ── */}
+                    <button
+                      onClick={() => removeFile(idx)}
+                      title={`Remove ${file.name}`}
+                      style={{
+                        background: 'rgba(239,68,68,0.15)',
+                        border: '1px solid rgba(239,68,68,0.25)',
+                        borderRadius: '50%', cursor: 'pointer',
+                        width: 18, height: 18, display: 'flex',
+                        alignItems: 'center', justifyContent: 'center',
+                        padding: 0, transition: 'background 0.15s',
+                        flexShrink: 0,
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.35)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.15)')}
+                    >
+                      <X size={10} color="var(--red)" />
+                    </button>
                   </div>
-                  <span className="truncate text-text-secondary text-sm font-medium">{file.name}</span>
-                </div>
-                <button onClick={() => removeFile(idx)} className="text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
-              </div>
-            ))
+                );
+              })}
+            </div>
           )}
-          <button onClick={() => fileInputRef.current?.click()} className="text-text-secondary hover:text-text-primary font-medium text-sm w-full text-center py-2 transition-colors">
-            + Add File
-          </button>
-        </div>
 
-        <div className="p-5 border-b border-border">
-          <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-4">Agent Memory</h3>
-          <div className="flex flex-wrap gap-2">
-            <span className="bg-background-card border border-border px-2.5 py-1 rounded-md text-xs font-medium text-text-primary">Python developer</span>
-            <span className="bg-background-card border border-border px-2.5 py-1 rounded-md text-xs font-medium text-text-primary">Prefers FastAPI</span>
+          {/* Text input row */}
+          <div className="chat-input-wrap">
+            <div style={{ display: 'flex', alignItems: 'center', paddingLeft: 12, gap: 4 }}>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                style={{ display: 'none' }}
+                accept="image/*,text/*,.pdf,.csv,.json,.md"
+                multiple
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                title="Attach image or file"
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: attachedFiles.length > 0 ? agentColor : 'var(--text-muted)',
+                  padding: 6, borderRadius: 7, transition: 'color 0.2s',
+                  display: 'flex', alignItems: 'center',
+                }}
+              >
+                <Paperclip size={18} />
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                title="Attach image"
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: 'var(--text-muted)', padding: 6, borderRadius: 7,
+                  transition: 'color 0.2s', display: 'flex', alignItems: 'center',
+                }}
+              >
+                <ImageIcon size={18} />
+              </button>
+            </div>
+
+            <input
+              className="chat-input"
+              type="text"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                attachedFiles.length > 0
+                  ? `Ask about the ${attachedFiles.length > 1 ? 'files' : 'file'}…`
+                  : `Message ${agentName}…`
+              }
+              disabled={isTyping}
+            />
+
+            <div style={{ paddingRight: 10 }}>
+              <button
+                onClick={handleSend}
+                disabled={(!input.trim() && attachedFiles.length === 0) || isTyping}
+                className="btn-primary"
+                style={{ padding: '8px 12px' }}
+              >
+                <Send size={15} />
+              </button>
+            </div>
           </div>
-          <button className="text-accent-blue text-xs font-medium mt-4 hover:underline">Edit Memory</button>
-        </div>
 
-        <div className="p-5">
-          <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-4">This Session</h3>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-text-secondary">Duration</span>
-              <span className="text-text-primary font-medium">5 min ago</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-text-secondary">Messages</span>
-              <span className="text-text-primary font-medium">3</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-text-secondary">Model</span>
-              <span className="text-text-primary font-medium">Gemini 3.1 Pro</span>
-            </div>
+          <div style={{ marginTop: 8, textAlign: 'center', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+            Powered by Gemini 2.0 Flash (vision) · images are processed locally before sending
           </div>
         </div>
-
       </div>
 
+      {/* ── RIGHT SIDEBAR ── */}
+      <div style={{
+        width: 240, borderLeft: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column',
+        background: 'rgba(8,11,20,0.7)', backdropFilter: 'blur(20px)',
+        fontSize: '0.825rem', color: 'var(--text-secondary)', flexShrink: 0,
+      }}>
+        <div style={{ padding: 20, borderBottom: '1px solid var(--border)' }}>
+          <div className="section-label">Session</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <InfoRow label="Messages" value={String(messages.length)} />
+            <InfoRow label="Model"    value="Gemini 2.0 Flash" />
+            <InfoRow label="Vision"   value="✓ Enabled" />
+          </div>
+        </div>
+
+        <div style={{ padding: 20 }}>
+          <div className="section-label">Supported Inputs</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {['💬 Text messages', '🖼️ Images (jpg, png, webp)', '📄 Documents (pdf, txt)', '🔗 Code files'].map(item => (
+              <div key={item} style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{item}</div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-// Subcomponents for Sidebar
-function ConnectorItem({ icon: Icon, name, connected }: { icon: any, name: string, connected?: boolean }) {
+/* ---------- Sidebar helpers ---------- */
+function ConnectorRow({ icon: Icon, name, connected }: { icon: any; name: string; connected?: boolean }) {
   return (
-    <div className="flex items-center justify-between text-sm group">
-      <div className="flex items-center gap-2 text-text-secondary">
-        <Icon className="w-4 h-4" />
-        {name}
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)' }}>
+        <Icon size={13} />{name}
       </div>
-      {connected ? (
-        <div className="w-2 h-2 rounded-full bg-accent-green"></div>
-      ) : (
-        <button className="text-[10px] font-bold text-text-muted group-hover:text-text-primary uppercase tracking-wider transition-colors">
-          + Connect
-        </button>
-      )}
+      {connected
+        ? <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--green)', boxShadow: '0 0 6px var(--green)' }} />
+        : <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>+ Connect</button>
+      }
     </div>
   );
 }
 
-function SessionItem({ title, time }: { title: string, time: string }) {
+function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="py-2 cursor-pointer group">
-      <div className="text-sm font-medium text-text-secondary group-hover:text-text-primary truncate transition-colors">
-        {title}
-      </div>
-      <div className="text-xs text-text-muted mt-0.5">{time}</div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <span style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>{label}</span>
+      <span style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.78rem' }}>{value}</span>
     </div>
   );
 }

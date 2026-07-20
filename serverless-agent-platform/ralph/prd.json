@@ -1,35 +1,38 @@
 {
   "project": "Serverless Agent Platform",
-  "branchName": "ralph/fix-dashboard-dummy-data",
-  "description": "Remove confusing dummy data from Dashboard and create a script to seed the agents table.",
+  "branchName": "ralph/feat-vision-chat",
+  "description": "Make the Agent Workspace chat fully functional like ChatGPT/Claude/Gemini: send images to a vision LLM, show image previews inline, and allow removing attached files.",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Create database seed script",
-      "description": "As a developer, I need a SQL script to populate the agents table so it is not empty.",
+      "title": "Upgrade LLM client to support vision (multimodal) messages",
+      "description": "As a user, when I attach an image and send a message, the image should actually be read by the AI model.",
       "acceptanceCriteria": [
-        "Create a file named `seed_agents.sql` in the root directory",
-        "The script should INSERT the 3 core agents ('agent_general', 'agent_docs', 'agent_vision') into the agents table",
-        "Typecheck passes"
+        "In `frontend/src/lib/llm.ts`, change the function signature to accept messages that can contain image_url content parts (OpenAI vision format)",
+        "Switch to a free vision-capable model on OpenRouter. Use `google/gemini-2.0-flash-exp:free` as the primary model (it supports vision)",
+        "When a message has attached files that are images, convert them to base64 data URLs and include them as OpenAI-format `image_url` content parts in the user message sent to the API",
+        "Keep the streaming SSE parser unchanged",
+        "TypeScript must compile with no errors"
       ],
       "priority": 1,
       "passes": false,
-      "notes": ""
+      "notes": "The OpenAI vision message format for a user turn with an image is: { role: 'user', content: [{ type: 'text', text: '...' }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,...' } }] }"
     },
     {
       "id": "US-002",
-      "title": "Remove dummy data from Dashboard",
-      "description": "As a user, I want the dashboard to show my actual data instead of hardcoded dummy arrays.",
+      "title": "Show image previews inline in chat bubbles + allow removing files",
+      "description": "As a user, I want to see attached images rendered inside the chat message I sent, and I want a clear X button to remove files before sending.",
       "acceptanceCriteria": [
-        "In `frontend/src/pages/Dashboard.tsx`, remove the hardcoded `timelineData`, `distributionData`, and `recentRuns` arrays",
-        "Update the Recharts and Table components to handle an empty state (0 runs) gracefully instead of crashing",
-        "Ensure the Task Distribution pie chart uses actual data from `liveRuns` if available, or renders an empty/placeholder state",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "In `frontend/src/pages/Agents.tsx`, update the AgentWorkspace component:",
+        "1. In the attached files preview area (below the input bar), show a thumbnail of the image if the file is an image type, alongside an × remove button",
+        "2. When a message is sent with attached images, display them as <img> thumbnails inside the user chat bubble, above the text",
+        "3. Store the message content as both the text string AND the file object references so they can be rendered in the history",
+        "4. Clear the attached files state after each send",
+        "TypeScript must compile with no errors"
       ],
       "priority": 2,
       "passes": false,
-      "notes": ""
+      "notes": "Use URL.createObjectURL(file) for the thumbnail preview in the input bar. Use FileReader to convert to base64 before sending to API."
     }
   ]
 }
